@@ -7,7 +7,7 @@
 """
 
 from .base import LLMProvider
-from .anthropic import AnthropicProvider
-# openAI
+from .anthropic_llm import AnthropicProvider
+from .openai_llm import OpenAIProvider
 
-__all__ = ["LLMProvider", "AnthropicProvider"]
+__all__ = ["LLMProvider", "AnthropicProvider", "OpenAIProvider"]
