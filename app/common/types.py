@@ -3,7 +3,46 @@
 """
 全局类型定义
 """
-from typing import Any, Callable, TypedDict
+from typing import Any, Callable, TypedDict, Literal, Union
+
+
+# Literal 表示限制这个变量的值，必须只能是[]里的这几个值
+StopReason = Literal["end_turn", "tool_use", "max_tokens", "stop", "error"]
+Role = Literal["user", "assistant", "tool"]
+
+
+class UserMessage(TypedDict):
+    """用户消息。content 是纯文本。"""
+    role: Literal["user"]
+    content: str
+
+
+class AssistantTextMessage(TypedDict):
+    """Assistant 的纯文本回复。"""
+    role: Literal["assistant"]
+    content: str
+
+
+class AssistantToolCallMessage(TypedDict):
+    """Assistant 要调 tool 的消息。"""
+    role: Literal["assistant"]
+    # 加引号表示向前引用，防止死锁
+    tool_calls: list["ToolCall"]
+
+
+class ToolResultMessage(TypedDict):
+    """Tool 执行结果消息。"""
+    role: Literal["tool"]
+    tool_call_id: str
+    content: str
+
+
+# 一个 Message 可以是上面四种之一
+Message = Union[UserMessage, 
+                AssistantTextMessage, 
+                AssistantToolCallMessage, 
+                ToolResultMessage]
+
 
 
 class ToolSchema(TypedDict):
@@ -34,6 +73,16 @@ class Tool(TypedDict):
     execute: Callable[..., Any]
     # Callable 表示可执行函数：Callable[参数类型, 返回类型]
     # 这里是定义比较宽松，即[参数随便，返回类型随便]
+
+
+class ToolCall(TypedDict):
+    """
+    LLM 调用 tool 时的描述
+    """
+
+    id: str
+    name: str
+    arguments: dict[str, Any]
 
 
 class LLMResponse(TypedDict):

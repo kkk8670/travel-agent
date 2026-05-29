@@ -11,6 +11,14 @@ from app.config import setting
 from .base import LLMProvider
 
 
+_ANTHROPIC_STOP_REASON_MAP = {
+    "end_turn": "end_turn",
+    "tool_use": "tool_use",
+    "max_tokens": "max_tokens",
+    "stop_sequence": "stop",
+}
+
+
 class AnthropicProvider(LLMProvider):
     """
     Anthropic API 的硬性规定：（self.client.messages.create）
@@ -64,7 +72,7 @@ class AnthropicProvider(LLMProvider):
     - "tool_use"：代表大模型说“我要调用工具”。
     - "tool_result"：代表你本地执行完工具，把结果还给大模型。
     - (option) "type": "image"：如果你要发一张图片给 Claude 识别，图片块的类型就是这个。
-    
+
 
     Tools 的硬性 JSON Schema:
     要求你传一个列表，每个工具都是一个字典，有三个硬性键（Key）：
@@ -94,6 +102,7 @@ class AnthropicProvider(LLMProvider):
         self.client = Anthropic(api_key=setting.anthropic_api_key)
         self.model = model or setting.default_model
 
+
     def chat(self, messages, tools, system=""):
         anthropic_tools = [
             {
@@ -108,14 +117,14 @@ class AnthropicProvider(LLMProvider):
             model=self.model,
             max_tokens=2048,
             system=system,
-            messages=messages,
+            messages=self._to_anthropic_messages(messages),
             tools=anthropic_tools if anthropic_tools else None,
         )
 
         result = {
             "content": "",
             "tool_calls": [],
-            "stop_reason": response.stop_reason,
+            "stop_reason": _ANTHROPIC_STOP_REASON_MAP.get(response.stop_reason, "error"),
             "raw_content": response.content,
         }
         for block in response.content:
@@ -128,3 +137,53 @@ class AnthropicProvider(LLMProvider):
                     "arguments": block.input,
                 })
         return result
+
+
+    def _to_anthropic_messages(self, messages):
+        """统一格式 → Anthropic 格式。"""
+        result = []
+        for msg in messages:
+            role = msg["role"]
+            if role == "user":
+                result.append({"role": "user", "content": msg["content"]})
+            elif role == "assistant":
+                if "tool_calls" in msg:
+                    # assistant 要调 tool
+                    content_blocks = []
+                    for tc in msg["tool_calls"]:
+                        content_blocks.append({
+                            "type": "tool_use",
+                            "id": tc["id"],
+                            "name": tc["name"],
+                            "input": tc["arguments"],
+                        })
+                    result.append({"role": "assistant", "content": content_blocks})
+                else:
+                    result.append({"role": "assistant", "content": msg["content"]})
+            elif role == "tool":
+                # tool 结果在 Anthropic 里是 user 消息 + tool_result block
+                result.append({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": msg["tool_call_id"],
+                        "content": msg["content"],
+                    }],
+                })
+        return result
+
+
+
+if __name__ == "__main__":
+    # 跑法（项目根目录）: uv run python -m app.models.anthropic
+    p = AnthropicProvider()
+    response = p.chat(
+        messages=[{"role": "user", "content": "用 5 个字回答：东京是哪国的"}],
+        tools=[],
+        system="",
+    )
+    print("content:", response["content"])
+    print("stop_reason:", response["stop_reason"])
+    print("tool_calls:", response["tool_calls"])
+    assert response["content"], "应该有内容"
+    print("✓ AnthropicProvider 通过")

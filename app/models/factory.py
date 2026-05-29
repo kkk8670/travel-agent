@@ -19,9 +19,10 @@ Provider 工厂：配置驱动地创建 provider。
 
 import os
 from .base import LLMProvider
-from .anthropic import AnthropicProvider
-from .openai_compatible import OpenAICompatibleProvider
+from .anthropic_provider import AnthropicProvider
+from .openai_compatible_provider import OpenAICompatibleProvider
 from app.config import setting
+from .fallback import FallbackProvider
 
 
 # 每个 backend :provider 类 + 默认连接参数。
@@ -68,10 +69,25 @@ def create_provider(backend: str, model: str) -> LLMProvider:
 
 
 def create_llm() -> LLMProvider:
-    """根据 setting 创建主 LLM provider。
-    用户改 .env 的 LLM_TARGET / LOCAL_PROFILE / CLOUD_PROFILE 切换。"""
+    """
+    根据 setting 创建主 LLM provider。
+    用户改 .env 的 LLM_TARGET / LOCAL_PROFILE / CLOUD_PROFILE 切换。
+	若 enable_fallback=True，会包装成 FallbackProvider，主用挂了自动切本地 dev。
+    """
+
     spec = setting.resolve_llm()
-    return create_provider(spec["backend"], spec["model"])
+    primary = create_provider(spec["backend"], spec["model"])
+    
+    if not setting.enable_fallback:
+        return primary
+    
+    # 备用永远是 local dev（本地兜底）
+    backup_spec = setting.LOCAL_PROFILES["dev"]  # 从 setting import
+    # 避免主备相同（用户主就是 local dev 时不用 fallback）
+    if spec == backup_spec:
+        return primary
+    backup = create_provider(backup_spec["backend"], backup_spec["model"])
+    return FallbackProvider([primary, backup])
 
 
 def create_router() -> LLMProvider:

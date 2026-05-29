@@ -50,6 +50,11 @@ class Settings:
     # === agent 行为 ===
     max_iterations: int = 12
 
+    # === fallback 开关 ===
+    # 当主 LLM 失败时是否自动切到备用。备用永远是 local + dev。
+    # 用于断网/限流/付费方案省钱等场景。
+    enable_fallback: bool = False
+
     @classmethod
     def from_env(cls) -> "Settings":
         return cls(
@@ -59,6 +64,7 @@ class Settings:
             router_target=os.getenv("ROUTER_TARGET", "cloud"),
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+            enable_fallback=os.getenv("ENABLE_FALLBACK", "false").lower() == "true",
         )
 
     def resolve_llm(self) -> dict:
